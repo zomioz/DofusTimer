@@ -58,7 +58,7 @@ class App:
         self.status_var = tk.StringVar()
         ttk.Label(frame, textvariable=self.status_var, wraplength=300,
                   justify="center").grid(row=4, column=0, columnspan=3, pady=(10, 0))
-        ttk.Label(frame, text="by zephryane").grid(row=5, column=2, sticky="e", pady=(8, 0))
+        ttk.Label(frame, text="by Zephyrane").grid(row=5, column=2, sticky="e", pady=(8, 0))
 
         self._set_idle_status()
         self._refresh_buttons()
