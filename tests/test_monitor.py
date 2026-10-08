@@ -1,0 +1,80 @@
+import queue
+import time
+
+import numpy as np
+import pytest
+
+from dofus_timer import monitor
+from dofus_timer.capture import clamp
+from dofus_timer.config import Calibration
+
+W, H = 400, 300
+ANCHOR = (100, 100, 60, 30)
+DURATION = (110, 150, 80, 20)
+
+
+class FakeGrabber:
+    screen = np.zeros((H, W, 3), np.uint8)
+    bounds = (0, 0, W, H)
+
+    def clamp(self, rect):
+        return clamp(rect, self.bounds)
+
+    def grab(self, rect):
+        x, y, w, h = rect
+        return FakeGrabber.screen[y:y + h, x:x + w].copy()
+
+    def close(self):
+        pass
+
+
+class FakeOcr:
+    def read(self, gray):
+        return "2 min 15 s"
+
+
+@pytest.fixture
+def setup(monkeypatch):
+    monkeypatch.setattr(monitor, "INTERVAL", 0.02)
+    monkeypatch.setattr(monitor, "READ_DELAY", 0.02)
+    rng = np.random.default_rng(1)
+    pattern = rng.integers(0, 255, (ANCHOR[3], ANCHOR[2]), dtype=np.uint8)
+    FakeGrabber.screen = np.zeros((H, W, 3), np.uint8)
+    cal = Calibration(ANCHOR, DURATION, pattern)
+
+    def show(visible, dx=0):
+        x, y, w, h = ANCHOR
+        FakeGrabber.screen[y:y + h, x:x + w] = 0
+        FakeGrabber.screen[y:y + h, x + dx:x + dx + w] = pattern[:, :, None] if visible else 0
+
+    events = queue.Queue()
+    mon = monitor.Monitor(cal, FakeOcr(), events, FakeGrabber)
+    mon.start()
+    yield show, events
+    mon.stop()
+
+
+def test_counts_each_popup_once(setup):
+    show, events = setup
+    show(True)
+    assert events.get(timeout=3).seconds == 135
+    with pytest.raises(queue.Empty):
+        events.get(timeout=0.5)  # le popup reste affiché : pas de doublon
+    show(False)
+    time.sleep(0.3)  # laisse le moniteur voir la fermeture
+    show(True)
+    assert events.get(timeout=3).seconds == 135
+
+
+def test_popup_already_visible_at_start_is_ignored(monkeypatch):
+    monkeypatch.setattr(monitor, "INTERVAL", 0.02)
+    rng = np.random.default_rng(1)
+    pattern = rng.integers(0, 255, (ANCHOR[3], ANCHOR[2]), dtype=np.uint8)
+    FakeGrabber.screen = np.zeros((H, W, 3), np.uint8)
+    FakeGrabber.screen[100:130, 100:160] = pattern[:, :, None]
+    events = queue.Queue()
+    mon = monitor.Monitor(Calibration(ANCHOR, DURATION, pattern), FakeOcr(), events, FakeGrabber)
+    mon.start()
+    with pytest.raises(queue.Empty):
+        events.get(timeout=0.5)
+    mon.stop()
