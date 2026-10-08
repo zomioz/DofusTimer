@@ -12,7 +12,7 @@ from . import ocr as ocr_mod
 from .capture import Grabber, grow, union
 
 THRESHOLD = 0.8  # score minimal de détection du popup
-INTERVAL = 0.15  # environ 7 captures/s sur la seule zone utile
+INTERVAL = 0.08  # environ 12 captures/s sur la seule zone utile
 MARGIN = 220  # tolérance de déplacement du popup, en pixels
 READ_ATTEMPTS = 4
 READ_DELAY = 0.15  # délai entre les tentatives OCR après la première lecture immédiate
