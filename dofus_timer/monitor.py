@@ -12,10 +12,10 @@ from . import ocr as ocr_mod
 from .capture import Grabber, grow, union
 
 THRESHOLD = 0.8  # score minimal de détection du popup
-INTERVAL = 0.4  # secondes entre deux captures
-MARGIN = 40  # tolérance de déplacement du popup, en pixels
+INTERVAL = 0.15  # environ 7 captures/s sur la seule zone utile
+MARGIN = 220  # tolérance de déplacement du popup, en pixels
 READ_ATTEMPTS = 4
-READ_DELAY = 0.5  # laisse finir l'animation du popup avant la lecture
+READ_DELAY = 0.15  # délai entre les tentatives OCR après la première lecture immédiate
 ABSENT_FRAMES = 3  # captures consécutives sans popup avant de le considérer fermé
 
 
@@ -59,7 +59,8 @@ class Monitor(threading.Thread):
         shown = self._popup(grabber) is not None  # popup déjà affiché au départ : ignoré
         absent = 0
         while not self._halt.wait(INTERVAL):
-            if self._popup(grabber) is None:
+            popup = self._popup(grabber)
+            if popup is None:
                 absent += 1
                 if absent >= ABSENT_FRAMES:
                     shown = False
@@ -67,7 +68,7 @@ class Monitor(threading.Thread):
             absent = 0
             if not shown:
                 shown = True
-                self._read_popup(grabber)
+                self._read_popup(grabber, popup)
 
     def _popup(self, grabber: Grabber) -> tuple[np.ndarray, tuple[int, int]] | None:
         gray = cv2.cvtColor(grabber.grab(self._region), cv2.COLOR_BGR2GRAY)
@@ -83,15 +84,16 @@ class Monitor(threading.Thread):
         y = dy - ry + (loc[1] - (ay - ry))
         return gray[max(y, 0): max(y + h, 0), max(x, 0): max(x + w, 0)]
 
-    def _read_popup(self, grabber: Grabber) -> None:
+    def _read_popup(self, grabber: Grabber,
+                    initial: tuple[np.ndarray, tuple[int, int]]) -> None:
         crop, text = np.empty(0), ""
-        for _ in range(READ_ATTEMPTS):
-            if self._halt.wait(READ_DELAY):
-                return
-            found = self._popup(grabber)
-            if found is None:
-                return
-            crop = self._crop_duration(*found)
+        gray, loc = initial
+        for attempt in range(READ_ATTEMPTS):
+            if attempt:
+                if self._halt.wait(READ_DELAY):
+                    return
+                gray = cv2.cvtColor(grabber.grab(self._region), cv2.COLOR_BGR2GRAY)
+            crop = self._crop_duration(gray, loc)
             seconds, text = ocr_mod.read_duration(self.ocr, crop)
             if seconds is not None:
                 self.events.put(Event("result", seconds, text))

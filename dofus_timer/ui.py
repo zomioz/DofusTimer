@@ -39,7 +39,7 @@ class App:
         self.total = 0
         self.count = 0
 
-        root.title("Dofus Timer")
+        root.title("Dofus Timer - By zephyrane")
         root.resizable(False, False)
         frame = ttk.Frame(root, padding=14)
         frame.grid()
@@ -92,7 +92,7 @@ class App:
         self.events = queue.Queue()
         self.monitor = Monitor(self.cal, self.ocr, self.events)
         self.monitor.start()
-        self.status_var.set("Surveillance active")
+        self.status_var.set("Surveillance active : en attente du popup de fin de combat")
         self._refresh_buttons()
 
     def stop(self, status: str = "Arrêté") -> None:
