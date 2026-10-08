@@ -30,7 +30,7 @@ class FakeGrabber:
 
 class FakeOcr:
     def read(self, gray):
-        return "2 min 15 s"
+        return "00:02:15"
 
 
 @pytest.fixture

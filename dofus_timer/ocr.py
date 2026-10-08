@@ -59,20 +59,26 @@ def create_ocr() -> Ocr:
     return WindowsOcr()
 
 
-_CLOCK = re.compile(r"(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?!\d)")
-_UNIT = re.compile(r"(\d+)\s*(heures?|h|minutes?|mins?|mn|m|secondes?|secs?|s)(?![a-z])")
-_UNIT_SECONDS = {"h": 3600, "m": 60, "s": 1}
+_CLOCK_CHARS = "0-9OoQqIl|"
+_CLOCK_SEPARATOR = r"(?:\s*[:：﹕.,;]\s*|\s+)"
+_CLOCK = re.compile(
+    rf"(?<![{_CLOCK_CHARS}])([{_CLOCK_CHARS}]{{2}})"
+    rf"{_CLOCK_SEPARATOR}([{_CLOCK_CHARS}]{{2}})"
+    rf"{_CLOCK_SEPARATOR}([{_CLOCK_CHARS}]{{2}})(?![{_CLOCK_CHARS}])"
+)
+_OCR_DIGITS = str.maketrans({"O": "0", "o": "0", "Q": "0", "q": "0",
+                             "I": "1", "l": "1", "|": "1"})
 
 
 def parse_duration(text: str) -> int | None:
-    """Convertit '2 min 15 s', '1 h 5 min' ou '12:30' en secondes."""
-    t = text.lower()
-    if m := _CLOCK.search(t):
-        parts = [int(p) for p in m.groups() if p is not None]
-        total = parts[0] * 60 + parts[1] if len(parts) == 2 else parts[0] * 3600 + parts[1] * 60 + parts[2]
-    else:
-        found = _UNIT.findall(t)
-        total = sum(int(n) * _UNIT_SECONDS[u[0]] for n, u in found)
+    """Convertit HH:MM:SS (avec variantes OCR du séparateur) en secondes."""
+    match = _CLOCK.search(text)
+    if match is None:
+        return None
+    hours, minutes, seconds = (int(part.translate(_OCR_DIGITS)) for part in match.groups())
+    if hours > 23 or minutes > 59 or seconds > 59:
+        return None
+    total = hours * 3600 + minutes * 60 + seconds
     return total if 0 < total < 24 * 3600 else None
 
 

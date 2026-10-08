@@ -4,16 +4,27 @@ from dofus_timer.ocr import parse_duration
 
 
 @pytest.mark.parametrize("text, expected", [
-    ("2 min 15 s", 135),
-    ("2min15s", 135),
-    ("1 h 5 min", 3900),
-    ("1 heure 5 minutes 3 secondes", 3903),
-    ("Durée : 12:30", 750),
-    ("1:02:03", 3723),
-    ("45 s", 45),
+    ("00:01:41", 101),
+    ("00.01.41", 101),
+    ("00：01﹕41", 101),
+    ("OO:Ol:4l", 101),
+    ("00 01 41", 101),
+    ("00,01;41", 101),
+    ("Durée : 00:01:41", 101),
+    ("01 : 02 : 03", 3723),
+    ("23:59:59", 86399),
+    ("00:61:00", None),
+    ("00:00:73", None),
+    ("24:00:00", None),
+    ("01:41", None),
+    ("01.41", None),
+    ("000141", None),
+    ("2 min 15 s", None),
+    ("1 h 5 min", None),
+    ("45 s", None),
     ("", None),
     ("combat terminé", None),
-    ("0 s", None),
+    ("00:00:00", None),
 ])
 def test_parse_duration(text, expected):
     assert parse_duration(text) == expected
