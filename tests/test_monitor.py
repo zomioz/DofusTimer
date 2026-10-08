@@ -1,4 +1,5 @@
 import queue
+import threading
 import time
 
 import numpy as np
@@ -16,13 +17,17 @@ DURATION = (110, 150, 80, 20)
 class FakeGrabber:
     screen = np.zeros((H, W, 3), np.uint8)
     bounds = (0, 0, W, H)
+    first_grab = None
 
     def clamp(self, rect):
         return clamp(rect, self.bounds)
 
     def grab(self, rect):
         x, y, w, h = rect
-        return FakeGrabber.screen[y:y + h, x:x + w].copy()
+        image = FakeGrabber.screen[y:y + h, x:x + w].copy()
+        if FakeGrabber.first_grab is not None:
+            FakeGrabber.first_grab.set()
+        return image
 
     def close(self):
         pass
@@ -40,6 +45,7 @@ def setup(monkeypatch):
     rng = np.random.default_rng(1)
     pattern = rng.integers(0, 255, (ANCHOR[3], ANCHOR[2]), dtype=np.uint8)
     FakeGrabber.screen = np.zeros((H, W, 3), np.uint8)
+    FakeGrabber.first_grab = threading.Event()
     cal = Calibration(ANCHOR, DURATION, pattern)
 
     def show(visible, dx=0):
@@ -51,6 +57,7 @@ def setup(monkeypatch):
     events = queue.Queue()
     mon = monitor.Monitor(cal, FakeOcr(), events, FakeGrabber)
     mon.start()
+    assert FakeGrabber.first_grab.wait(timeout=1)
     yield show, events
     mon.stop()
 

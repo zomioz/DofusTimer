@@ -61,9 +61,13 @@ def create_ocr() -> Ocr:
 
 _CLOCK_CHARS = "0-9OoQqIl|"
 _CLOCK_SEPARATOR = r"(?:\s*[:：﹕.,;]\s*|\s+)"
-_CLOCK = re.compile(
+_CLOCK_HMS = re.compile(
     rf"(?<![{_CLOCK_CHARS}])([{_CLOCK_CHARS}]{{2}})"
     rf"{_CLOCK_SEPARATOR}([{_CLOCK_CHARS}]{{2}})"
+    rf"{_CLOCK_SEPARATOR}([{_CLOCK_CHARS}]{{2}})(?![{_CLOCK_CHARS}])"
+)
+_CLOCK_MS = re.compile(
+    rf"(?<![{_CLOCK_CHARS}])([{_CLOCK_CHARS}]{{2}})"
     rf"{_CLOCK_SEPARATOR}([{_CLOCK_CHARS}]{{2}})(?![{_CLOCK_CHARS}])"
 )
 _OCR_DIGITS = str.maketrans({"O": "0", "o": "0", "Q": "0", "q": "0",
@@ -71,14 +75,21 @@ _OCR_DIGITS = str.maketrans({"O": "0", "o": "0", "Q": "0", "q": "0",
 
 
 def parse_duration(text: str) -> int | None:
-    """Convertit HH:MM:SS (avec variantes OCR du séparateur) en secondes."""
-    match = _CLOCK.search(text)
-    if match is None:
-        return None
-    hours, minutes, seconds = (int(part.translate(_OCR_DIGITS)) for part in match.groups())
-    if hours > 23 or minutes > 59 or seconds > 59:
-        return None
-    total = hours * 3600 + minutes * 60 + seconds
+    """Convertit MM:SS ou HH:MM:SS, avec variantes OCR, en secondes."""
+    match = _CLOCK_HMS.search(text)
+    if match is not None:
+        hours, minutes, seconds = (int(part.translate(_OCR_DIGITS)) for part in match.groups())
+        if hours > 23 or minutes > 59 or seconds > 59:
+            return None
+        total = hours * 3600 + minutes * 60 + seconds
+    else:
+        match = _CLOCK_MS.search(text)
+        if match is None:
+            return None
+        minutes, seconds = (int(part.translate(_OCR_DIGITS)) for part in match.groups())
+        if minutes > 59 or seconds > 59:
+            return None
+        total = minutes * 60 + seconds
     return total if 0 < total < 24 * 3600 else None
 
 
