@@ -14,15 +14,10 @@ Prérequis : une langue Windows avec OCR (le français ou l'anglais installés p
 
 ## Utilisation
 
-1. Dofus en mode **fenêtré** ou **plein écran sans bordure**.
-2. Premier lancement : termine un combat, laisse le popup affiché, clique sur **Calibrer** et entoure (1) un élément fixe du popup, puis (2) la durée. Le résultat de lecture est affiché pour vérification. La calibration est mémorisée dans `%APPDATA%\DofusTimer`.
-3. **Départ** remet le total à zéro et lance la surveillance, **Stop** l'arrête. Recalibre si tu changes la résolution ou l'échelle de l'interface.
+1. Premier lancement : termine un combat, laisse le popup de fin de combat affiché, clique sur **Calibrer** et entoure (1) un élément fixe du popup (Le bouton vert "Fermer" de preference), puis (2) la durée du combat. Le résultat de lecture est affiché pour vérification. La calibration est mémorisée dans `%APPDATA%\DofusTimer`.
+2. **Départ** remet le total à zéro et lance la surveillance, **Stop** l'arrête. Recalibre si tu changes la résolution, la position de la fenetre de fin de combat ou l'échelle de l'interface.
 
 Si un popup n'est pas lu, la zone est sauvegardée dans `%APPDATA%\DofusTimer\last_failed.png`.
-
-## Écran noir à la calibration
-
-Dofus est alors en plein écran exclusif : passe-le en mode fenêtré ou sans bordure. Un mode sans bordure se reconnaît à un Alt+Tab instantané, sans clignotement ni changement de résolution.
 
 ## Développement
 
