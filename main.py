@@ -27,7 +27,7 @@ def selftest() -> int:
     try:
         engine = ocr.create_ocr()
         image = np.full((60, 320), 255, np.uint8)
-        cv2.putText(image, "12 min 30 s", (10, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.2, 0, 2)
+        cv2.putText(image, "12:30", (10, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.2, 0, 2)
         message = f"ok : {ocr.read_duration(engine, image)}"
     except ocr.OcrUnavailable as exc:
         message = f"moteur OCR indisponible (non bloquant) : {exc}"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import queue
 import threading
+from collections import Counter
 from dataclasses import dataclass
 
 import cv2
@@ -14,9 +15,10 @@ from .capture import Grabber, grow, union
 THRESHOLD = 0.8  # score minimal de détection du popup
 INTERVAL = 0.08  # environ 12 captures/s sur la seule zone utile
 MARGIN = 220  # tolérance de déplacement du popup, en pixels
-READ_ATTEMPTS = 4
+READ_ATTEMPTS = 6
+CONSENSUS = 2  # lectures identiques (sur des captures différentes) pour valider une durée
 READ_DELAY = 0.15  # délai entre les tentatives OCR après la première lecture immédiate
-ABSENT_FRAMES = 3  # captures consécutives sans popup avant de le considérer fermé
+ABSENT_FRAMES = 6  # captures consécutives sans popup avant de le considérer fermé
 
 
 @dataclass
@@ -88,16 +90,29 @@ class Monitor(threading.Thread):
                     initial: tuple[np.ndarray, tuple[int, int]]) -> None:
         crop, text = np.empty(0), ""
         gray, loc = initial
+        votes: Counter[int] = Counter()
+        texts: dict[int, str] = {}
         for attempt in range(READ_ATTEMPTS):
             if attempt:
                 if self._halt.wait(READ_DELAY):
                     return
                 gray = cv2.cvtColor(grabber.grab(self._region), cv2.COLOR_BGR2GRAY)
+                score, new_loc = detector.find(gray, self.cal.anchor_image)
+                if score >= THRESHOLD:
+                    loc = new_loc  # le popup peut encore bouger pendant son animation
             crop = self._crop_duration(gray, loc)
             seconds, text = ocr_mod.read_duration(self.ocr, crop)
-            if seconds is not None:
+            if seconds is None:
+                continue
+            votes[seconds] += 1
+            texts.setdefault(seconds, text)
+            if votes[seconds] >= CONSENSUS:
                 self.events.put(Event("result", seconds, text))
                 return
+        ranked = votes.most_common(2)
+        if ranked and (len(ranked) == 1 or ranked[0][1] > ranked[1][1]):
+            self.events.put(Event("result", ranked[0][0], texts[ranked[0][0]]))
+            return
         if crop.size:
             config.save_debug_image(crop)
         self.events.put(Event("error", text=text))

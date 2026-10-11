@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import sys
+from collections import Counter
 from typing import Iterator, Protocol
 
 import cv2
@@ -59,38 +60,34 @@ def create_ocr() -> Ocr:
     return WindowsOcr()
 
 
-_CLOCK_CHARS = "0-9OoQqIl|"
-_CLOCK_SEPARATOR = r"(?:\s*[:：﹕.,;]\s*|\s+)"
-_CLOCK_HMS = re.compile(
-    rf"(?<![{_CLOCK_CHARS}])([{_CLOCK_CHARS}]{{2}})"
-    rf"{_CLOCK_SEPARATOR}([{_CLOCK_CHARS}]{{2}})"
-    rf"{_CLOCK_SEPARATOR}([{_CLOCK_CHARS}]{{2}})(?![{_CLOCK_CHARS}])"
-)
+_CLOCK_CHARS = "0-9OoQqDIl|!SBZ"
+_CLOCK_SEPARATOR = r"(?:\s*[:：﹕.,;]\s*|\s+|)"
+# Un troisième groupe (HH:MM:SS) n'est pas un format valide : on le rejette plutôt que de lire un faux MM:SS.
 _CLOCK_MS = re.compile(
     rf"(?<![{_CLOCK_CHARS}])([{_CLOCK_CHARS}]{{2}})"
-    rf"{_CLOCK_SEPARATOR}([{_CLOCK_CHARS}]{{2}})(?![{_CLOCK_CHARS}])"
+    rf"{_CLOCK_SEPARATOR}([{_CLOCK_CHARS}]{{2}})"
+    rf"(?![{_CLOCK_CHARS}])(?!\s*[:：﹕.,;]\s*[{_CLOCK_CHARS}])"
 )
-_OCR_DIGITS = str.maketrans({"O": "0", "o": "0", "Q": "0", "q": "0",
-                             "I": "1", "l": "1", "|": "1"})
+_CLOCK_HMS = re.compile(rf"[{_CLOCK_CHARS}]{{2}}\s*[:：﹕]\s*[{_CLOCK_CHARS}]{{2}}\s*[:：﹕]\s*[{_CLOCK_CHARS}]{{2}}")
+_OCR_DIGITS = str.maketrans({"O": "0", "o": "0", "Q": "0", "q": "0", "D": "0",
+                             "I": "1", "l": "1", "|": "1", "!": "1",
+                             "S": "5", "B": "8", "Z": "2"})
+MAX_SECONDS = 59 * 60 + 59
 
 
 def parse_duration(text: str) -> int | None:
-    """Convertit MM:SS ou HH:MM:SS, avec variantes OCR, en secondes."""
-    match = _CLOCK_HMS.search(text)
-    if match is not None:
-        hours, minutes, seconds = (int(part.translate(_OCR_DIGITS)) for part in match.groups())
-        if hours > 23 or minutes > 59 or seconds > 59:
-            return None
-        total = hours * 3600 + minutes * 60 + seconds
-    else:
-        match = _CLOCK_MS.search(text)
-        if match is None:
-            return None
-        minutes, seconds = (int(part.translate(_OCR_DIGITS)) for part in match.groups())
-        if minutes > 59 or seconds > 59:
-            return None
+    """Convertit MM:SS, avec variantes OCR (O→0, l→1...), en secondes."""
+    if _CLOCK_HMS.search(text):
+        return None
+    for match in _CLOCK_MS.finditer(text):
+        try:
+            minutes, seconds = (int(part.translate(_OCR_DIGITS)) for part in match.groups())
+        except ValueError:
+            continue
         total = minutes * 60 + seconds
-    return total if 0 < total < 24 * 3600 else None
+        if seconds <= 59 and 0 < total <= MAX_SECONDS:
+            return total
+    return None
 
 
 def _variants(gray: np.ndarray) -> Iterator[np.ndarray]:
@@ -98,16 +95,33 @@ def _variants(gray: np.ndarray) -> Iterator[np.ndarray]:
     big = cv2.copyMakeBorder(big, 20, 20, 20, 20, cv2.BORDER_REPLICATE)
     yield big
     yield 255 - big  # texte clair sur fond sombre ou l'inverse
+    _, binary = cv2.threshold(cv2.GaussianBlur(big, (3, 3), 0), 0, 255,
+                              cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    yield binary
+    yield 255 - binary
 
 
 def read_duration(ocr: Ocr, gray: np.ndarray) -> tuple[int | None, str]:
-    """Retourne (secondes ou None, texte brut lu)."""
+    """Retourne (secondes ou None, texte brut lu) par vote entre plusieurs prétraitements."""
     if gray.size == 0:
         return None, ""
-    text = ""
+    votes: Counter[int] = Counter()
+    texts: dict[int, str] = {}
+    last = ""
     for image in _variants(gray):
-        text = ocr.read(image).strip()
-        seconds = parse_duration(text)
-        if seconds is not None:
-            return seconds, text
-    return None, text
+        last = ocr.read(image).strip()
+        seconds = parse_duration(last)
+        if seconds is None:
+            continue
+        votes[seconds] += 1
+        texts.setdefault(seconds, last)
+        ranked = votes.most_common(2)
+        if ranked[0][1] >= 2 and (len(ranked) == 1 or ranked[0][1] > ranked[1][1] + 1):
+            break  # deux lectures concordantes et aucune concurrente proche
+    if not votes:
+        return None, last
+    ranked = votes.most_common(2)
+    if len(ranked) == 2 and ranked[0][1] == ranked[1][1]:
+        return None, f"{texts[ranked[0][0]]} / {texts[ranked[1][0]]}"  # lectures contradictoires
+    winner = ranked[0][0]
+    return winner, texts[winner]
